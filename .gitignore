@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+*.tsbuildinfo
+
+# Supabase CLI local state, if you ever run `supabase start` locally
+.supabase/
