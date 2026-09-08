@@ -1,27 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-// maplibre-gl v6 dropped its default export — import the pieces we use by name.
-import { Map as MapLibreMap, Marker, NavigationControl } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import { useState } from "react";
 import type { LocationWithEntries } from "@history-by-you/db";
 import { useAuth } from "@/lib/useAuth";
 import { addEntry, createLocationWithEntry } from "@/lib/mutations";
+import { GoogleMapCanvas } from "./GoogleMapCanvas";
+import { MapLibreCanvas } from "./MapLibreCanvas";
 
-// MapLibre's own demo style — free, no API key required. Good enough to
-// build against; swap for a MapTiler/Stadia Maps style (or a self-hosted
-// one) before shipping, since the demo tiles aren't meant for production
-// traffic.
-const DEMO_STYLE = "https://demotiles.maplibre.org/style.json";
-const DEFAULT_CENTER: [number, number] = [-83.9296, 35.9544]; // UT Knoxville
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-type Mode = { type: "idle" } | { type: "arming" } | { type: "draft"; point: [number, number] };
+export type Mode = { type: "idle" } | { type: "arming" } | { type: "draft"; point: [number, number] };
 
 export function Map({ locations: initialLocations }: { locations: LocationWithEntries[] }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<Marker[]>([]);
-
   const { user, enabled: authEnabled } = useAuth();
   const [locations, setLocations] = useState(initialLocations);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -29,87 +19,34 @@ export function Map({ locations: initialLocations }: { locations: LocationWithEn
 
   const selected = locations.find((location) => location.id === selectedId) ?? null;
 
-  // Initialize the map once.
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+  function handleMapClick(point: [number, number]) {
+    setSelectedId(null);
+    setMode({ type: "draft", point });
+  }
 
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: DEMO_STYLE,
-      center: initialLocations[0]?.point ?? DEFAULT_CENTER,
-      zoom: 14,
-    });
-    map.addControl(new NavigationControl(), "top-right");
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle map clicks while in "arming" mode (placing a new pin).
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    function handleClick(event: { lngLat: { lng: number; lat: number } }) {
-      setMode((current) => {
-        if (current.type !== "arming") return current;
-        setSelectedId(null);
-        return { type: "draft", point: [event.lngLat.lng, event.lngLat.lat] };
-      });
-    }
-
-    map.on("click", handleClick);
-    return () => {
-      map.off("click", handleClick);
-    };
-  }, []);
-
-  // Keep the cursor honest about arming mode.
-  useEffect(() => {
-    const canvas = mapRef.current?.getCanvas();
-    if (canvas) canvas.style.cursor = mode.type === "arming" ? "crosshair" : "";
-  }, [mode.type]);
-
-  // Re-render markers whenever the location list changes.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = locations.map((location) => {
-      const marker = new Marker({ color: "#D9042B" }).setLngLat(location.point).addTo(map);
-      marker.getElement().addEventListener("click", (event) => {
-        event.stopPropagation();
-        setMode({ type: "idle" });
-        setSelectedId(location.id);
-      });
-      return marker;
-    });
-
-    return () => {
-      markersRef.current.forEach((marker) => marker.remove());
-      markersRef.current = [];
-    };
-  }, [locations]);
-
-  // Draft marker for a not-yet-saved location.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || mode.type !== "draft") return;
-
-    const marker = new Marker({ color: "#10DFD3" }).setLngLat(mode.point).addTo(map);
-    return () => {
-      marker.remove();
-    };
-  }, [mode]);
+  function handleMarkerClick(id: string) {
+    setMode({ type: "idle" });
+    setSelectedId(id);
+  }
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" />
+      {GOOGLE_MAPS_API_KEY ? (
+        <GoogleMapCanvas
+          apiKey={GOOGLE_MAPS_API_KEY}
+          locations={locations}
+          mode={mode}
+          onMapClick={handleMapClick}
+          onMarkerClick={handleMarkerClick}
+        />
+      ) : (
+        <MapLibreCanvas
+          locations={locations}
+          mode={mode}
+          onMapClick={handleMapClick}
+          onMarkerClick={handleMarkerClick}
+        />
+      )}
 
       <div className="absolute left-3 top-3 flex flex-col items-start gap-2">
         {!authEnabled && (
