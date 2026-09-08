@@ -1,22 +1,25 @@
 -- History By You — initial schema
 -- Run this in the Supabase SQL editor (or via `supabase db push`) on a fresh project.
 -- Replaces the original two-table MySQL schema (Locations, Comments) with:
---   - a real geography column (PostGIS) instead of separate lat/lng floats
 --   - entries tied to authenticated users instead of anonymous free-text names
 --   - row-level security so the API can be exposed directly to the client safely
-
-create extension if not exists postgis;
+--
+-- Plain lat/lng columns for now, same as the original MySQL schema — a
+-- PostGIS `geography` column was tried here first, but Supabase's REST
+-- layer doesn't hand it back as usable JSON without extra view/RPC
+-- plumbing, and there's no proximity search yet to justify that
+-- complexity. Add it back (with ST_AsGeoJSON-backed reads) once a feature
+-- actually needs it.
 
 -- One pin on the map.
 create table if not exists locations (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
-  point       geography(point, 4326) not null, -- (longitude, latitude)
+  lat         double precision not null,
+  lng         double precision not null,
   created_by  uuid references auth.users(id) on delete set null,
   created_at  timestamptz not null default now()
 );
-
-create index if not exists locations_point_idx on locations using gist (point);
 
 -- A history entry / comment on a location. Replaces the original flat
 -- "Comments" table; upvotes/downvotes are derived from location_votes

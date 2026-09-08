@@ -19,23 +19,8 @@ export async function getLocations(): Promise<LocationWithEntries[]> {
 
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
+  return (data ?? []).map(({ lat, lng, ...row }) => ({
     ...row,
-    point: parsePoint(row.point),
+    point: [lng, lat] as [number, number],
   })) as LocationWithEntries[];
-}
-
-// Supabase returns `geography(point)` columns as GeoJSON when selected
-// through PostgREST. This narrows that back down to [lng, lat].
-function parsePoint(point: unknown): [number, number] {
-  if (
-    point &&
-    typeof point === "object" &&
-    "coordinates" in point &&
-    Array.isArray((point as { coordinates: unknown }).coordinates)
-  ) {
-    const [lng, lat] = (point as { coordinates: [number, number] }).coordinates;
-    return [lng, lat];
-  }
-  return [0, 0];
 }
