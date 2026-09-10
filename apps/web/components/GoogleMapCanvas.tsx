@@ -27,6 +27,7 @@ export function GoogleMapCanvas({
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const draftMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const libsRef = useRef<{
     AdvancedMarkerElement: typeof google.maps.marker.AdvancedMarkerElement;
     PinElement: typeof google.maps.marker.PinElement;
@@ -76,6 +77,22 @@ export function GoogleMapCanvas({
           }
         });
 
+        // Google Maps paints gray if the container isn't at its final size
+        // when the map is constructed (the async library load races the
+        // flex layout settling). Nudge it on container resize; recenter
+        // only on the first one, so a later window resize doesn't yank the
+        // map back from wherever the user has panned.
+        let firstResize = true;
+        const observer = new ResizeObserver(() => {
+          google.maps.event.trigger(map, "resize");
+          if (firstResize) {
+            map.setCenter({ lat, lng });
+            firstResize = false;
+          }
+        });
+        observer.observe(containerRef.current);
+        resizeObserverRef.current = observer;
+
         mapRef.current = map;
         setReady(true);
       }
@@ -83,6 +100,8 @@ export function GoogleMapCanvas({
 
     return () => {
       cancelled = true;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
